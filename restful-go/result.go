@@ -6,7 +6,7 @@ import (
 	"io/ioutil"
 	"strings"
 	"time"
-	"reflect"
+	//"reflect"
 	"os"
 )
 
@@ -31,7 +31,8 @@ func (ts *Taos) CreateSubTable(subTableName string, model interface{}) error {
 }
 
 func (ts *Taos) Insert(subTable string, model interface{}) error {
-	sql := getInsertSql(ts.dbName + "." + subTable, model)
+	sql := getInsertSql(ts.dbName ,subTable, model)
+	fmt.Println("taosdb sql info:", sql)
 	_, err := exec(ts.ip, ts.port, ts.token, ExecS, sql)
 	if err != nil {
 		return err
@@ -76,7 +77,7 @@ func (ts *Taos) Subscribe(topic, tablename string, restart bool) error {
 		}
 	}
 
-	subscribe := Subscribe{topic: fmt.Sprintf(Select, ts.dbName + "." + tablename)}
+	subscribe := Subscribe{topic: fmt.Sprintf(Select, ts.dbName + "." + tablename), time: time.Now().Format("2006-01-02 15:04:05.000")}
 	if isDirExist("subscribe" + "/" + topic) {
 		result, err := ioutil.ReadFile("subscribe" + "/" + topic)
 		if err != nil {
@@ -86,12 +87,16 @@ func (ts *Taos) Subscribe(topic, tablename string, restart bool) error {
 		sub := strings.Split(string(result), "\n")
 		subscribe.time = sub[1]
 	}
-	
+
+	ts.lock.Lock()
+	defer ts.lock.Unlock()
 	ts.subs[topic] = subscribe
 	return nil
 }
 
 func (ts *Taos) UnSubscribe(topic string) error {
+	ts.lock.RLock()
+	defer ts.lock.RUnlock()
 	substr := ts.subs[topic].topic + "\n" + ts.subs[topic].time
 	err := ioutil.WriteFile("subscribe" + "/" + topic, []byte(substr), 0644)
 	if err != nil {
@@ -101,13 +106,16 @@ func (ts *Taos) UnSubscribe(topic string) error {
 }
 
 func (ts *Taos) Consume(topic string, model interface{}) error {
+	ts.lock.Lock()
+	defer ts.lock.Unlock()
 	var sql string
 	if ts.subs[topic].time == "" {
 		sql = ts.subs[topic].topic
 	}else{
 		sql = ts.subs[topic].topic + " where ts > " + "\"" + ts.subs[topic].time + "\""
 	}
-	sql += " order by " + strings.Split(strings.Split(reflect.TypeOf(model).Elem().Elem().Field(0).Tag.Get("taos"), ";")[0], ":")[1]
+	// sql += " order by " + strings.Split(strings.Split(reflect.TypeOf(model).Elem().Elem().Field(0).Tag.Get("taos"), ";")[0], ":")[1]
+	//fmt.Println(sql)
 	result, err := exec(ts.ip, ts.port, ts.token, ExecI, sql)
 	if err != nil {
 		return err

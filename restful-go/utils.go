@@ -80,8 +80,8 @@ func getSubTableSql(dbname, subTableName string, model interface{}) string{
 	return sql
 }
 
-func getInsertSql(subTable string, model interface{}) string {
-	var sql, param string
+func getInsertSql(dbname, subTable string, model interface{}) string {
+	var sql, param, tagsStr string
 	t := reflect.TypeOf(model)
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
@@ -94,11 +94,28 @@ func getInsertSql(subTable string, model interface{}) string {
 
 	for i := 0; i < v.NumField() ;i++ {
 		if strings.Contains(t.Field(i).Tag.Get("taos"), "timestamp") {
-			param += "now, "
+			if t.Field(i).Type.Kind() == reflect.String {
+				param += "\"" + v.Field(i).String() + "\"" + ", "
+			} else {
+				if v.Field(i).Int() == 0 {
+					param += "now, "
+				}else {
+					param += strconv.Itoa(int(v.Field(i).Int())) + ", "
+				}
+			}
 			continue
 		}
 
 		if t.Field(i).Tag.Get("taos_tag") != "" {
+			switch t.Field(i).Type.Kind() {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+				reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				tagsStr += strconv.Itoa(int(v.Field(i).Int())) + ", "
+			case reflect.String:
+				tagsStr += "\"" + v.Field(i).String() + "\"" + ", "
+			case reflect.Float32, reflect.Float64:
+				tagsStr += strconv.FormatFloat(v.Field(i).Float(), 'f', 6, 64) + ", "
+			}
 			continue
 		}
 
@@ -115,7 +132,7 @@ func getInsertSql(subTable string, model interface{}) string {
 			}
 		}
 	}
-	sql = fmt.Sprintf(InsertSql, subTable, param[:len(param) - 2])
+	sql = fmt.Sprintf(InsertSql, dbname + "." + subTable, dbname + "." + v.MethodByName("GetTable").Call(nil)[0].Interface().(string), tagsStr[:len(tagsStr) - 2], param[:len(param) - 2])
 	return sql
 }
 
@@ -133,6 +150,8 @@ func transModel(data, rows interface{}) int64{
 					case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 						 reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 						m.Elem().Field(k).SetInt(int64(reflect.ValueOf(val).Float()))
+					case reflect.Float32, reflect.Float64:
+						m.Elem().Field(k).SetFloat(reflect.ValueOf(val).Float())
 					}
 				}else {
 					m.Elem().Field(k).Set(reflect.ValueOf(val))

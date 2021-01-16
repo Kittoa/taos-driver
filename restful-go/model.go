@@ -1,5 +1,9 @@
 package restful_go
 
+import (
+	"sync"
+)
+
 var (
 	Login = "http://%v:%v/rest/login/%v/%v"
 	ExecS = "http://%v:%v/rest/sql"
@@ -7,7 +11,7 @@ var (
 
 	CreateTableSql    = "create table if not exists %v (%v) tags (%v)"
 	CreateSubTableSql = "create table if not exists %v using %v tags (%v)"
-	InsertSql         = "insert into %v values(%v)"
+	InsertSql         = "insert into %v using %v tags (%v) values(%v)"
 	Select            = "select * from %v"
 )
 
@@ -17,6 +21,7 @@ type Taos struct {
 	ip     string
 	port   string
 	subs   map[string]Subscribe
+	lock   sync.RWMutex
 }
 
 type Subscribe struct {
